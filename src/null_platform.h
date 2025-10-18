@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.5 - www.glfw.org
+// GLFW 3.4 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2016 Google Inc.
 // Copyright (c) 2016-2017 Camilla Löwy <elmindreda@glfw.org>
@@ -156,17 +156,6 @@
 #define GLFW_NULL_SC_MENU           120
 #define GLFW_NULL_SC_LAST           GLFW_NULL_SC_MENU
 
-typedef VkFlags VkHeadlessSurfaceCreateFlagsEXT;
-
-typedef struct VkHeadlessSurfaceCreateInfoEXT
-{
-    VkStructureType                 sType;
-    const void*                     pNext;
-    VkHeadlessSurfaceCreateFlagsEXT flags;
-} VkHeadlessSurfaceCreateInfoEXT;
-
-typedef VkResult (APIENTRY *PFN_vkCreateHeadlessSurfaceEXT)(VkInstance,const VkHeadlessSurfaceCreateInfoEXT*,const VkAllocationCallbacks*,VkSurfaceKHR*);
-
 // Null-specific per-window data
 //
 typedef struct _GLFWwindowNull
@@ -180,7 +169,6 @@ typedef struct _GLFWwindowNull
     GLFWbool        maximized;
     GLFWbool        resizable;
     GLFWbool        decorated;
-    GLFWbool        titlebar;
     GLFWbool        floating;
     GLFWbool        transparent;
     float           opacity;
@@ -259,10 +247,6 @@ void _glfwPollEventsNull(void);
 void _glfwWaitEventsNull(void);
 void _glfwWaitEventsTimeoutNull(double timeout);
 void _glfwPostEmptyEventNull(void);
-
-// Hazel
-void _glfwSetWindowTitlebarNull(_GLFWwindow* window, GLFWbool enabled);
-
 void _glfwGetCursorPosNull(_GLFWwindow* window, double* xpos, double* ypos);
 void _glfwSetCursorPosNull(_GLFWwindow* window, double x, double y);
 void _glfwSetCursorModeNull(_GLFWwindow* window, int mode);

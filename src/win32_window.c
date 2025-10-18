@@ -1,5 +1,5 @@
 //========================================================================
-// GLFW 3.5 Win32 - www.glfw.org
+// GLFW 3.4 Win32 - www.glfw.org
 //------------------------------------------------------------------------
 // Copyright (c) 2002-2006 Marcus Geelnard
 // Copyright (c) 2006-2019 Camilla Löwy <elmindreda@glfw.org>
@@ -32,10 +32,8 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include <windowsx.h>
 #include <shellapi.h>
-#include <uxtheme.h>
 
 // Returns the window style for the specified window
 //
@@ -375,6 +373,9 @@ static void updateFramebufferTransparency(const _GLFWwindow* window)
     BOOL composition, opaque;
     DWORD color;
 
+    if (!IsWindowsVistaOrGreater())
+        return;
+
     if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition)
        return;
 
@@ -531,9 +532,6 @@ static void maximizeWindowManually(_GLFWwindow* window)
 //
 static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	static RECT border_thickness = { 4, 4, 4, 4 };
-	BOOL hasThickFrame = GetWindowLongPtr(hWnd, GWL_STYLE) & WS_THICKFRAME;
-
     _GLFWwindow* window = GetPropW(hWnd, L"GLFW");
     if (!window)
     {
@@ -550,40 +548,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
                 // area static when the non-client area is scaled
                 if (wndconfig && wndconfig->scaleToMonitor)
                     EnableNonClientDpiScaling(hWnd);
-            }
-
-            case WM_CREATE:
-            {
-                if (_glfw.hints.window.titlebar)
-                    break;
-
-                if (hasThickFrame)
-                {
-                    RECT size_rect;
-                    GetWindowRect(hWnd, &size_rect);
-
-                    // Inform the application of the frame change to force redrawing with the new
-                    // client area that is extended into the title bar
-                    SetWindowPos(
-                        hWnd, NULL,
-                        size_rect.left, size_rect.top,
-                        size_rect.right - size_rect.left, size_rect.bottom - size_rect.top,
-                        SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE
-                    );
-                    break;
-                }
-
-                break;
-            }
-
-            case WM_ACTIVATE:
-            {
-                if (_glfw.hints.window.titlebar)
-                    break;
-
-				RECT title_bar_rect = {0};
-				InvalidateRect(hWnd, &title_bar_rect, FALSE);
-                break;
             }
         }
 
@@ -1018,6 +982,7 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
         case WM_MOUSEHWHEEL:
         {
+            // This message is only sent on Windows Vista and later
             // NOTE: The X-axis is inverted for consistency with macOS and X11
             _glfwInputScroll(window, -((SHORT) HIWORD(wParam) / (double) WHEEL_DELTA), 0.0);
             return 0;
@@ -1054,48 +1019,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
             break;
         }
-
-		case WM_NCCALCSIZE:
-		{
-			if (_glfw.hints.window.titlebar || !hasThickFrame || !wParam)
-				break;
-
-            // For custom frames
-
-            // Shrink client area by border thickness so we can
-            // resize window and see borders
-			const int resizeBorderX = GetSystemMetrics(SM_CXFRAME);
-			const int resizeBorderY = GetSystemMetrics(SM_CYFRAME);
-
-			NCCALCSIZE_PARAMS* params = (NCCALCSIZE_PARAMS*)lParam;
-			RECT* requestedClientRect = params->rgrc;
-
-			requestedClientRect->right -= resizeBorderX;
-			requestedClientRect->left += resizeBorderX;
-			requestedClientRect->bottom -= resizeBorderY;
-
-            //
-            // NOTE(Yan):
-            // 
-            // Top borders seem to be handled differently.
-            // 
-            // Contracting by 1 on Win 11 seems to give a small area
-            // for resizing whilst not showing a white border.
-            // 
-			// But this doesn't seem to work on Win 10, instead showing
-			// a general white titlebar on top of the custom one...
-			// to be continued.
-            // 
-            // Not changing the top (i.e. 0) means we don't see the
-            // mouse icon change to a resize handle, but resizing still
-            // works once you click and drag. This works on both
-            // Windows 10 & 11, so we'll keep that for now.
-			requestedClientRect->top += 0; 
-
-            // NOTE(Yan): seems to make no difference what we return here,
-            //            was originally 0
-			return WVR_ALIGNTOP | WVR_ALIGNLEFT;
-		}
 
         case WM_SIZE:
         {
@@ -1137,18 +1060,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
 
             window->win32.iconified = iconified;
             window->win32.maximized = maximized;
-
-			RECT size_rect;
-			GetWindowRect(hWnd, &size_rect);
-
-			// Inform the application of the frame change to force redrawing with the new
-			// client area that is extended into the title bar
-			SetWindowPos(
-				hWnd, NULL,
-				size_rect.left, size_rect.top,
-				size_rect.right - size_rect.left, size_rect.bottom - size_rect.top,
-				SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE
-			);
             return 0;
         }
 
@@ -1354,64 +1265,6 @@ static LRESULT CALLBACK windowProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM l
             DragFinish(drop);
             return 0;
         }
-
-        case WM_ACTIVATE:
-        {
-            if (_glfw.hints.window.titlebar)
-                break;
-
-			RECT title_bar_rect = { 0 };
-			InvalidateRect(hWnd, &title_bar_rect, FALSE);
-        }
-        case WM_NCHITTEST:
-        {
-            if (_glfw.hints.window.titlebar || !hasThickFrame)
-                break;
-
-            //
-            // Hit test for custom frames
-            //
-			POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
-			ScreenToClient(hWnd, &pt);
-
-            // Check borders first
-			if (!window->win32.maximized)
-			{
-				RECT rc;
-				GetClientRect(hWnd, &rc);
-
-				const int verticalBorderSize = GetSystemMetrics(SM_CYFRAME);
-
-				enum { left = 1, top = 2, right = 4, bottom = 8 };
-				int hit = 0;
-				if (pt.x <= border_thickness.left)
-                    hit |= left;
-				if (pt.x >= rc.right - border_thickness.right)
-                    hit |= right;
-				if (pt.y <= border_thickness.top || pt.y < verticalBorderSize)
-                    hit |= top;
-				if (pt.y >= rc.bottom - border_thickness.bottom)
-                    hit |= bottom;
-
-				if (hit & top && hit & left)        return HTTOPLEFT;
-				if (hit & top && hit & right)       return HTTOPRIGHT;
-				if (hit & bottom && hit & left)     return HTBOTTOMLEFT;
-				if (hit & bottom && hit & right)    return HTBOTTOMRIGHT;
-				if (hit & left)                     return HTLEFT;
-                if (hit & top)                      return HTTOP;
-				if (hit & right)                    return HTRIGHT;
-				if (hit & bottom)                   return HTBOTTOM;
-			}
-
-            // Then do client-side test which should determine titlebar bounds
-			int titlebarHittest = 0;
-			_glfwInputTitleBarHitTest(window, pt.x, pt.y, &titlebarHittest);
-			if (titlebarHittest)
-				return HTCAPTION;
-
-            // In client area
-			return HTCLIENT;
-        }
     }
 
     return DefWindowProcW(hWnd, uMsg, wParam, lParam);
@@ -1527,7 +1380,7 @@ static int createNativeWindow(_GLFWwindow* window,
         frameHeight = rect.bottom - rect.top;
     }
 
-    wideTitle = _glfwCreateWideStringFromUTF8Win32(window->title);
+    wideTitle = _glfwCreateWideStringFromUTF8Win32(wndconfig->title);
     if (!wideTitle)
         return GLFW_FALSE;
 
@@ -1553,9 +1406,15 @@ static int createNativeWindow(_GLFWwindow* window,
 
     SetPropW(window->win32.handle, L"GLFW", window);
 
-    ChangeWindowMessageFilterEx(window->win32.handle, WM_DROPFILES, MSGFLT_ALLOW, NULL);
-    ChangeWindowMessageFilterEx(window->win32.handle, WM_COPYDATA, MSGFLT_ALLOW, NULL);
-    ChangeWindowMessageFilterEx(window->win32.handle, WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
+    if (IsWindows7OrGreater())
+    {
+        ChangeWindowMessageFilterEx(window->win32.handle,
+                                    WM_DROPFILES, MSGFLT_ALLOW, NULL);
+        ChangeWindowMessageFilterEx(window->win32.handle,
+                                    WM_COPYDATA, MSGFLT_ALLOW, NULL);
+        ChangeWindowMessageFilterEx(window->win32.handle,
+                                    WM_COPYGLOBALDATA, MSGFLT_ALLOW, NULL);
+    }
 
     window->win32.scaleToMonitor = wndconfig->scaleToMonitor;
     window->win32.keymenu = wndconfig->win32.keymenu;
@@ -2121,6 +1980,9 @@ GLFWbool _glfwFramebufferTransparentWin32(_GLFWwindow* window)
     if (!window->win32.transparent)
         return GLFW_FALSE;
 
+    if (!IsWindowsVistaOrGreater())
+        return GLFW_FALSE;
+
     if (FAILED(DwmIsCompositionEnabled(&composition)) || !composition)
         return GLFW_FALSE;
 
@@ -2143,11 +2005,6 @@ void _glfwSetWindowResizableWin32(_GLFWwindow* window, GLFWbool enabled)
 }
 
 void _glfwSetWindowDecoratedWin32(_GLFWwindow* window, GLFWbool enabled)
-{
-    updateWindowStyles(window);
-}
-
-void _glfwSetWindowTitlebarWin32(_GLFWwindow* window, GLFWbool enabled)
 {
     updateWindowStyles(window);
 }
@@ -2719,6 +2576,7 @@ VkResult _glfwCreateWindowSurfaceWin32(VkInstance instance,
 
 GLFWAPI HWND glfwGetWin32Window(GLFWwindow* handle)
 {
+    _GLFWwindow* window = (_GLFWwindow*) handle;
     _GLFW_REQUIRE_INIT_OR_RETURN(NULL);
 
     if (_glfw.platform.platformID != GLFW_PLATFORM_WIN32)
@@ -2727,9 +2585,6 @@ GLFWAPI HWND glfwGetWin32Window(GLFWwindow* handle)
                         "Win32: Platform not initialized");
         return NULL;
     }
-
-    _GLFWwindow* window = (_GLFWwindow*) handle;
-    assert(window != NULL);
 
     return window->win32.handle;
 }
